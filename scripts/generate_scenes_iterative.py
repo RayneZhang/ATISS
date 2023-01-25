@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from training_utils import load_config
-from utils import floor_plan_from_scene, export_scene, make_network_input_from_gen_boxes, render_to_folder
+from utils import floor_plan_from_scene, export_scene, make_network_input_from_gen, print_predicted_labels
 
 import render_threedfront_scene
 from scene_completion import poll_specific_class
@@ -245,7 +245,6 @@ def main(argv):
             boxes["sizes"],
             boxes["angles"]
         ], dim=-1).cpu().numpy()
-
         renderables, trimesh_meshes = get_textured_objects(
             bbox_params_t, objects_dataset, classes
         )
@@ -300,20 +299,16 @@ def main(argv):
                 title="Generated Scene"
             )
 
-            object_indices = poll_generated_objects(dataset, boxes)
-            input_boxes = make_network_input_from_gen_boxes(boxes, object_indices)
+            object_indices = poll_generated_objects(dataset, bbox_params)
+            input_boxes = make_network_input_from_gen(bbox_params, object_indices)
 
             completion_config = load_config("../config/bedrooms_eval_config.yaml")
-            # New network
+            # New network for scene completion
             completion_network, _, _ = build_network(
                 dataset.feature_size, dataset.n_classes,
                 completion_config, args.weight_file, device=device
             )
             completion_network.eval()
-
-            floor_plan, tr_floor, room_mask = floor_plan_from_scene(
-                current_scene, args.path_to_floor_plan_textures
-            )
 
             query_class_label = poll_specific_class(dataset)
             if query_class_label is not None:
@@ -330,12 +325,16 @@ def main(argv):
                 )
 
             boxes = dataset.post_process(bbox_params)
-            bbox_params_t = torch.cat([
-                boxes["class_labels"],
-                boxes["translations"],
-                boxes["sizes"],
-                boxes["angles"]
-            ], dim=-1).cpu().numpy()
+            bbox_params_t = torch.cat(
+                [
+                    boxes["class_labels"],
+                    boxes["translations"],
+                    boxes["sizes"],
+                    boxes["angles"]
+                ],
+                dim=-1
+            ).cpu().numpy()
+            print_predicted_labels(dataset, boxes)
 
             renderables, trimesh_meshes = get_textured_objects(
                 bbox_params_t, objects_dataset, classes
@@ -351,7 +350,7 @@ def main(argv):
                 camera_target=args.camera_target,
                 up_vector=args.up_vector,
                 background=args.background,
-                title="Generated Scene"
+                title="Re-generated Scene"
             )
 
         if trimesh_meshes is not None:
