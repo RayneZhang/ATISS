@@ -8,7 +8,9 @@
 
 import torch
 import torch.nn as nn
+import math
 
+torch.pi = math.pi
 
 class FixedPositionalEncoding(nn.Module):
     def __init__(self, proj_dims, val=0.1):

@@ -124,14 +124,19 @@ def main(argv):
         help="Visualize also the rooom's floor"
     )
     parser.add_argument(
+        "--floor_plan_only",
+        action="store_true",
+        help="Visualize just the rooom's floor"
+    )
+    parser.add_argument(
         "--with_walls",
         action="store_true",
-        help="Visualize also the rooom's floor"
+        help="Visualize also the rooom's wall"
     )
     parser.add_argument(
         "--with_door_and_windows",
         action="store_true",
-        help="Visualize also the rooom's floor"
+        help="Visualize also the room's door and windows"
     )
     parser.add_argument(
         "--with_texture",
@@ -225,6 +230,14 @@ def main(argv):
                                 colors=(0.8, 0.8, 0.8, 0.6)
                             )
                         ]
+
+            if args.floor_plan_only:
+                # Get a floor plan
+                floor_plan, tr_floor, _ = floor_plan_from_scene(
+                    s, args.path_to_floor_plan_textures, without_room_mask=True
+                )
+                renderables = floor_plan
+                trimesh_meshes = tr_floor
 
             if args.without_screen:
                 path_to_image = "{}/{}_".format(args.output_directory, s.uid)

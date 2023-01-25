@@ -22,5 +22,8 @@ env3/
 wandb/
 output/
 
+tester/
+models/
+
 #VS Code settings
 .vscode/

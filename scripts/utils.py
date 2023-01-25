@@ -263,6 +263,17 @@ def make_network_input(current_boxes, indices):
         angles=_prepare(current_boxes["angles"][indices])
     )
 
+def make_network_input_from_gen_boxes(generated_boxes, indices):
+    def _prepare(x):
+        return torch.from_numpy(x[None].astype(np.float32))
+
+    return dict(
+        class_labels=_prepare(generated_boxes["class_labels"][0].numpy()[indices]),
+        translations=_prepare(generated_boxes["translations"][0].numpy()[indices]),
+        sizes=_prepare(generated_boxes["sizes"][0].numpy()[indices]),
+        angles=_prepare(generated_boxes["angles"][0].numpy()[indices])
+    )
+
 
 def render_to_folder(
     args,

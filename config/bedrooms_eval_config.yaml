@@ -1,7 +1,7 @@
 data:
     dataset_type: "cached_threedfront"
     encoding_type: "cached_autoregressive_wocm_eval"
-    dataset_directory: "/media/paschalidoud/goproorgohome/3D_FRONT_processed/bedrooms"
+    dataset_directory: "/tmp/3D-FRONT"
     annotation_file: "../config/bedroom_threed_front_splits.csv"
     path_to_invalid_scene_ids: "../config/invalid_threed_front_rooms.txt"
     path_to_invalid_bbox_jids: "../config/black_list.txt"
@@ -31,7 +31,7 @@ feature_extractor:
 
 training:
     splits: ["train", "val"]
-    epochs: 10000
+    epochs: 100
     steps_per_epoch: 500
     batch_size: 128
     save_frequency: 50
