@@ -285,10 +285,14 @@ def main(argv):
     # Disable trimesh's logger
     logging.getLogger("trimesh").setLevel(logging.ERROR)
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda:0")
-    else:
-        device = torch.device("cpu")
+    # Option 1: running on GPU
+    # if torch.cuda.is_available():
+    #     device = torch.device("cuda:0")
+    # else:
+    #     device = torch.device("cpu")
+    
+    # Option 2: running on CPU because GPU might run out of memory.
+    device = torch.device("cpu")
     print("Running code on", device)
 
     # Check if output directory exists and if it doesn't create it

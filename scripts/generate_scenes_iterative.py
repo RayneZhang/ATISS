@@ -78,7 +78,7 @@ def main(argv):
     )
     parser.add_argument(
         "--n_sequences",
-        default=10,
+        default=3,
         type=int,
         help="The number of sequences to be generated"
     )
@@ -202,7 +202,7 @@ def main(argv):
     given_scene_id = None
 
     # print("We have the following scenes as seeds of floor plan:")
-    # Wait for 3 seconds.
+    # # Wait for 3 seconds.
     # time.sleep(3)
     # for i, di in enumerate(raw_dataset):
     #     print(str(di.scene_id))
@@ -214,7 +214,7 @@ def main(argv):
     #         if str(di.scene_id) == selected_scene_id:
     #             given_scene_id = i
 
-    # Show the selected floor plan to users.
+    # # Show the selected floor plan to users.
     # print("Ok, now let's take a look at the original design")
     # render_threedfront_scene.main([selected_scene_id, args.output_directory, "/3D-FRONT/3D-FRONT", "/3D-FRONT/3D-FUTURE-model", "/3D-FRONT/3D-FUTURE-model/model_info.json", args.path_to_floor_plan_textures, "--with_floor_layout", "--with_texture"])
 
@@ -223,9 +223,10 @@ def main(argv):
 
     # print("Ok, now let's generate a design using this floor plan")
     classes = np.array(dataset.class_labels)
+    scene_idx = given_scene_id or np.random.choice(len(dataset))
+    current_scene = raw_dataset[scene_idx]
+    bbox_params_all = []
     for i in range(args.n_sequences):
-        scene_idx = given_scene_id or np.random.choice(len(dataset))
-        current_scene = raw_dataset[scene_idx]
         print("{} / {}: Using the floor plan of scene {}".format(
             i, args.n_sequences, current_scene.scene_id)
         )
@@ -238,6 +239,8 @@ def main(argv):
             room_mask=room_mask.to(device),
             device=device
         )
+        bbox_params_all.append(bbox_params)
+        
         boxes = dataset.post_process(bbox_params)
         bbox_params_t = torch.cat([
             boxes["class_labels"],
@@ -296,62 +299,65 @@ def main(argv):
                 camera_target=args.camera_target,
                 up_vector=args.up_vector,
                 background=args.background,
-                title="Generated Scene"
+                title="Generated Scene {}".format(i)
             )
 
-            object_indices = poll_generated_objects(dataset, bbox_params)
-            input_boxes = make_network_input_from_gen(bbox_params, object_indices)
+    bbox_params = bbox_params_all[int(input("Which room do you want? Type its index (0-2)\n"))]
 
-            completion_config = load_config("../config/bedrooms_eval_config.yaml")
-            # New network for scene completion
-            completion_network, _, _ = build_network(
-                dataset.feature_size, dataset.n_classes,
-                completion_config, args.weight_file, device=device
+    while input("Are you satisfied with this design? Type 'yes' or 'no'\n") != "yes":
+        object_indices = poll_generated_objects(dataset, bbox_params)
+        input_boxes = make_network_input_from_gen(bbox_params, object_indices)
+
+        completion_config = load_config("../config/bedrooms_eval_config.yaml")
+        # New network for scene completion
+        completion_network, _, _ = build_network(
+            dataset.feature_size, dataset.n_classes,
+            completion_config, args.weight_file, device=device
+        )
+        completion_network.eval()
+
+        query_class_label = poll_specific_class(dataset)
+        if query_class_label is not None:
+            print("Adding a single object")
+            bbox_params = completion_network.add_object(
+                room_mask=room_mask,
+                class_label=query_class_label,
+                boxes=input_boxes
             )
-            completion_network.eval()
-
-            query_class_label = poll_specific_class(dataset)
-            if query_class_label is not None:
-                print("Adding a single object")
-                bbox_params = completion_network.add_object(
-                    room_mask=room_mask,
-                    class_label=query_class_label,
-                    boxes=input_boxes
-                )
-            else:
-                print("Doing scene completion")
-                bbox_params = completion_network.complete_scene(
-                    boxes=input_boxes, room_mask=room_mask
-                )
-
-            boxes = dataset.post_process(bbox_params)
-            bbox_params_t = torch.cat(
-                [
-                    boxes["class_labels"],
-                    boxes["translations"],
-                    boxes["sizes"],
-                    boxes["angles"]
-                ],
-                dim=-1
-            ).cpu().numpy()
-            print_predicted_labels(dataset, boxes)
-
-            renderables, trimesh_meshes = get_textured_objects(
-                bbox_params_t, objects_dataset, classes
+        else:
+            print("Doing scene completion")
+            bbox_params = completion_network.complete_scene(
+                boxes=input_boxes, room_mask=room_mask
             )
-            renderables += floor_plan
-            trimesh_meshes += tr_floor
 
-            show(
-                renderables,
-                behaviours=[LightToCamera(), SnapshotOnKey(), SortTriangles()],
-                size=args.window_size,
-                camera_position=args.camera_position,
-                camera_target=args.camera_target,
-                up_vector=args.up_vector,
-                background=args.background,
-                title="Re-generated Scene"
-            )
+        boxes = dataset.post_process(bbox_params)
+        bbox_params_t = torch.cat(
+            [
+                boxes["class_labels"],
+                boxes["translations"],
+                boxes["sizes"],
+                boxes["angles"]
+            ],
+            dim=-1
+        ).cpu().numpy()
+        print_predicted_labels(dataset, boxes)
+
+        renderables, trimesh_meshes = get_textured_objects(
+            bbox_params_t, objects_dataset, classes
+        )
+        renderables += floor_plan
+        trimesh_meshes += tr_floor
+
+        show(
+        renderables,
+        behaviours=[LightToCamera(), SnapshotOnKey(), SortTriangles()],
+        size=args.window_size,
+        camera_position=args.camera_position,
+        camera_target=args.camera_target,
+        up_vector=args.up_vector,
+        background=args.background,
+        title="Re-generated Scene"
+        )
 
         if trimesh_meshes is not None:
             # Create a trimesh scene and export it
