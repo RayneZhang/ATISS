@@ -46,6 +46,25 @@ def poll_generated_objects(dataset, current_boxes):
 
     return idxs_kept
 
+def poll_moving_object(dataset, current_boxes):
+    """Show the objects in the current_scene and ask which one to be
+    moved."""
+    classes = np.array(dataset.class_labels)
+    labels = classes[current_boxes["class_labels"].argmax(-1)].tolist()[0]
+    print(
+        "The scene you selected contains {}".format(
+            list(enumerate(labels))
+        )
+    )
+    msg = "Enter the index of objects to be moved\n"
+    index = int(input(msg))
+    return index
+
+def poll_vector(msg):
+    """Ask the user to enter a vector based on the message (e.g., position, rotation, size)."""
+    ois = [float(oi) for oi in input(msg).split(",") if oi != ""]
+    return list(ois)
+
 def main(argv):
     parser = argparse.ArgumentParser(
         description="Iteratively generate and adjust scenes using a previously trained model"
@@ -303,8 +322,40 @@ def main(argv):
             )
 
     bbox_params = bbox_params_all[int(input("Which room do you want? Type its index (0-2)\n"))]
+    print(bbox_params)
 
     while input("Are you satisfied with this design? Type 'yes' or 'no'\n") != "yes":
+        while input("Do you want to move an object? Type 'yes' or 'no'\n") == "yes":
+            object_index = poll_moving_object(dataset, bbox_params)
+            offset = poll_vector("Type the offset in the format of (x,y,z):")
+            print(bbox_params["translations"])
+            object_position = bbox_params["translations"][0][object_index]
+            bbox_params["translations"][0][object_index] =  torch.add(object_position, torch.Tensor(offset))
+            print(bbox_params["translations"])
+            boxes = dataset.post_process(bbox_params)
+            bbox_params_t = torch.cat([
+                boxes["class_labels"],
+                boxes["translations"],
+                boxes["sizes"],
+                boxes["angles"]
+            ], dim=-1).cpu().numpy()
+            renderables, trimesh_meshes = get_textured_objects(
+                bbox_params_t, objects_dataset, classes
+            )
+            renderables += floor_plan
+            trimesh_meshes += tr_floor
+
+            show(
+                renderables,
+                behaviours=[LightToCamera(), SnapshotOnKey(), SortTriangles()],
+                size=args.window_size,
+                camera_position=args.camera_position,
+                camera_target=args.camera_target,
+                up_vector=args.up_vector,
+                background=args.background,
+                title="Moved Scene"
+            )
+
         object_indices = poll_generated_objects(dataset, bbox_params)
         input_boxes = make_network_input_from_gen(bbox_params, object_indices)
 
