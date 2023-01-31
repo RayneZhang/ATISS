@@ -13,6 +13,7 @@ from utils import floor_plan_from_scene, export_scene, make_network_input_from_g
 
 import render_threedfront_scene
 from scene_completion import poll_specific_class
+from object_suggestions import sample_in_bbox
 
 from scene_synthesis.datasets import filter_function, \
     get_dataset_raw_and_encoded
@@ -220,27 +221,6 @@ def main(argv):
 
     given_scene_id = None
 
-    # print("We have the following scenes as seeds of floor plan:")
-    # # Wait for 3 seconds.
-    # time.sleep(3)
-    # for i, di in enumerate(raw_dataset):
-    #     print(str(di.scene_id))
-
-    # msg = "Select one floor plan by typing the scene name\n"
-    # selected_scene_id = input(msg)
-    # if selected_scene_id:
-    #     for i, di in enumerate(raw_dataset):
-    #         if str(di.scene_id) == selected_scene_id:
-    #             given_scene_id = i
-
-    # # Show the selected floor plan to users.
-    # print("Ok, now let's take a look at the original design")
-    # render_threedfront_scene.main([selected_scene_id, args.output_directory, "/3D-FRONT/3D-FRONT", "/3D-FRONT/3D-FUTURE-model", "/3D-FRONT/3D-FUTURE-model/model_info.json", args.path_to_floor_plan_textures, "--with_floor_layout", "--with_texture"])
-
-    # print("Ok, now let's take a look at just the floor plan of the design")
-    # render_threedfront_scene.main([selected_scene_id, args.output_directory, "/3D-FRONT/3D-FRONT", "/3D-FRONT/3D-FUTURE-model", "/3D-FRONT/3D-FUTURE-model/model_info.json", args.path_to_floor_plan_textures, "--floor_plan_only"])
-
-    # print("Ok, now let's generate a design using this floor plan")
     classes = np.array(dataset.class_labels)
     scene_idx = given_scene_id or np.random.choice(len(dataset))
     current_scene = raw_dataset[scene_idx]
@@ -323,15 +303,71 @@ def main(argv):
 
     bbox_params = bbox_params_all[int(input("Which room do you want? Type its index (0-2)\n"))]
     print(bbox_params)
+    while input("Do you want to ask for an object suggestion? Type 'yes' or 'no'\n") == "yes":
+        object_indices = poll_generated_objects(dataset, bbox_params)
+        bbox_bounds = [
+            float(ti)
+            for ti in input("Enter bbox dims to place an object\n").split(",")
+        ]
+        boxes = make_network_input_from_gen(bbox_params, object_indices)
+        # Given the current context predict the probability of all class labels
+        with torch.no_grad():
+            class_probs = network.distribution_classes(
+                boxes=boxes, room_mask=room_mask
+            )
+            translation_probs = [
+                network.distribution_translations(boxes, room_mask, c)
+                for c in range(len(dataset.object_types))
+            ]
+        try:
+            new_class, (tx, ty, tz) = sample_in_bbox(class_probs,
+                                                     translation_probs,
+                                                     bbox_bounds, 100000)
+        except RuntimeError:
+            continue
+        print("Adding {} at location: ({:.4f}, {:.4f}, {:.4f})".format(
+            dataset.object_types[new_class], tx, ty, tz
+        ))
+
+        bbox_params = network.add_object_with_class_and_translation(
+            boxes,
+            room_mask,
+            int(new_class),
+            torch.tensor([tx, ty, tz])[None, None].float()
+        )
+
+        boxes = dataset.post_process(bbox_params)
+        bbox_params_t = torch.cat([
+            boxes["class_labels"],
+            boxes["translations"],
+            boxes["sizes"],
+            boxes["angles"]
+        ], dim=-1).cpu().numpy()
+        renderables, trimesh_meshes = get_textured_objects(
+            bbox_params_t, objects_dataset, classes
+        )
+        renderables += floor_plan
+        trimesh_meshes += tr_floor
+
+        show(
+            renderables,
+            behaviours=[LightToCamera(), SnapshotOnKey(), SortTriangles()],
+            size=args.window_size,
+            camera_position=args.camera_position,
+            camera_target=args.camera_target,
+            up_vector=args.up_vector,
+            background=args.background,
+            title="Suggested Object Scene"
+        )
 
     while input("Are you satisfied with this design? Type 'yes' or 'no'\n") != "yes":
         while input("Do you want to move an object? Type 'yes' or 'no'\n") == "yes":
             object_index = poll_moving_object(dataset, bbox_params)
             offset = poll_vector("Type the offset in the format of (x,y,z):")
-            print(bbox_params["translations"])
+            #print(bbox_params["translations"])
             object_position = bbox_params["translations"][0][object_index]
             bbox_params["translations"][0][object_index] =  torch.add(object_position, torch.Tensor(offset))
-            print(bbox_params["translations"])
+            #print(bbox_params["translations"])
             boxes = dataset.post_process(bbox_params)
             bbox_params_t = torch.cat([
                 boxes["class_labels"],

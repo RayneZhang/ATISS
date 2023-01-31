@@ -186,7 +186,7 @@ def sample_in_bbox(class_probs, translation_probs, bbox, trials=1000):
         x, y, z = [sample_dmll(*di) for di in translation_probs[c]]
         if in_bbox(bbox, x, y, z):
             return c, (x, y, z)
-
+    print("Couldn't sample in the bbox")
     raise RuntimeError("Couldn't sample in the bbox")
 
 
