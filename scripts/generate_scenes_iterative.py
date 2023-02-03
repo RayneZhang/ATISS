@@ -11,7 +11,6 @@ import torch
 from training_utils import load_config
 from utils import floor_plan_from_scene, export_scene, make_network_input_from_gen, print_predicted_labels
 
-import render_threedfront_scene
 from scene_completion import poll_specific_class
 from object_suggestions import sample_in_bbox
 
@@ -310,6 +309,8 @@ def main(argv):
             for ti in input("Enter bbox dims to place an object\n").split(",")
         ]
         boxes = make_network_input_from_gen(bbox_params, object_indices)
+        query_class_label = poll_specific_class(dataset)
+
         # Given the current context predict the probability of all class labels
         with torch.no_grad():
             class_probs = network.distribution_classes(
@@ -322,7 +323,7 @@ def main(argv):
         try:
             new_class, (tx, ty, tz) = sample_in_bbox(class_probs,
                                                      translation_probs,
-                                                     bbox_bounds, 100000)
+                                                     bbox_bounds, 100000, query_class_label)
         except RuntimeError:
             continue
         print("Adding {} at location: ({:.4f}, {:.4f}, {:.4f})".format(

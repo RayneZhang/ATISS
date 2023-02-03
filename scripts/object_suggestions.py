@@ -145,7 +145,7 @@ def post_process_box(dataset, bbox_bounds):
     return box_renderable, box_trimesh
 
 
-def sample_in_bbox(class_probs, translation_probs, bbox, trials=1000):
+def sample_in_bbox(class_probs, translation_probs, bbox, trials=1000, query_class_label=None):
     """Do rejection sampling to sample the class and translation from the given
     probabilities."""
     def in_bbox(bbox, x, y, z):
@@ -166,6 +166,7 @@ def sample_in_bbox(class_probs, translation_probs, bbox, trials=1000):
 
     # Prepare the probs for sampling (casting to numpy basically)
     class_probs = class_probs.numpy().ravel()
+    # print(class_probs)
     translation_probs = [
         [
             (p.numpy().ravel(), mu.numpy().ravel(), s.numpy().ravel())
@@ -181,8 +182,10 @@ def sample_in_bbox(class_probs, translation_probs, bbox, trials=1000):
     for i in range(N):
         if classes[i] >= len(translation_probs):
             continue
-
+        
         c = classes[i]
+        if query_class_label != None:
+            c = query_class_label
         x, y, z = [sample_dmll(*di) for di in translation_probs[c]]
         if in_bbox(bbox, x, y, z):
             return c, (x, y, z)
