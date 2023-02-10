@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import torch
+from operator import add
 
 from training_utils import load_config
 from utils import floor_plan_from_scene, export_scene, make_network_input_from_gen, print_predicted_labels
@@ -28,6 +29,8 @@ from simple_3dviz.behaviours.movements import CameraTrajectory
 from simple_3dviz.behaviours.trajectory import Circle
 from simple_3dviz.behaviours.io import SaveFrames, SaveGif
 from simple_3dviz.utils import render
+
+from simple_3dviz.renderables.textured_mesh import Material, TexturedMesh
 
 def poll_generated_objects(dataset, current_boxes):
     """Show the objects in the current_scene and ask which ones to be
@@ -60,10 +63,32 @@ def poll_moving_object(dataset, current_boxes):
     index = int(input(msg))
     return index
 
+def poll_specific_object():
+    """Ask which object to be added."""
+    msg = "Enter the object ID that you want to add to the scene\n"
+    return input(msg)
+
 def poll_vector(msg):
     """Ask the user to enter a vector based on the message (e.g., position, rotation, size)."""
     ois = [float(oi) for oi in input(msg).split(",") if oi != ""]
     return list(ois)
+
+def get_object_by_path(id):
+    """Get a textured object based on the provided object id."""
+    #path = os.path.join("/3D-FRONT/3D-FUTURE-model/", id, "raw_object.obj")
+    path = "/3D-FRONT/3D-FUTURE-model/" + id + "/raw_model.obj"
+    # Load the furniture and scale it as it is given in the dataset
+    raw_mesh = TexturedMesh.from_file(path)
+    raw_mesh.scale([1,1,1])
+    R = np.zeros((3, 3))
+    R[0, 0] = np.cos(0)
+    R[0, 2] = -np.sin(0)
+    R[2, 0] = np.sin(0)
+    R[2, 2] = np.cos(0)
+    R[1, 1] = 1.
+    translation = [0,0,0]
+    raw_mesh.affine_transform(R=R, t=translation)
+    return raw_mesh
 
 def main(argv):
     parser = argparse.ArgumentParser(
@@ -362,7 +387,49 @@ def main(argv):
         )
 
     while input("Are you satisfied with this design? Type 'yes' or 'no'\n") != "yes":
-        while input("Do you want to move an object? Type 'yes' or 'no'\n") == "yes":
+        query_mesh = None
+        if input("Do you want to add an object? Type 'yes' or 'no'\n") == "yes":
+            query_object_id = poll_specific_object()
+            if query_object_id is not None:
+                print("You are trying to add the object {}".format(query_object_id))
+                query_mesh = get_object_by_path(query_object_id)
+                print(query_mesh)
+            pos = [0,0,0]
+            while input("Do you want to move this object? Type 'yes' or 'no'\n") == "yes":
+                offset = poll_vector("Type the offset in the format of (x,y,z):")
+                pos = list(map(add, pos, offset))
+                print(pos)
+                query_mesh.affine_transform(t=np.array(pos))
+                boxes = dataset.post_process(bbox_params)
+                bbox_params_t = torch.cat(
+                    [
+                        boxes["class_labels"],
+                        boxes["translations"],
+                        boxes["sizes"],
+                        boxes["angles"]
+                    ],
+                    dim=-1
+                ).cpu().numpy()
+                renderables, trimesh_meshes = get_textured_objects(
+                    bbox_params_t, objects_dataset, classes
+                )
+                if query_mesh is not None:
+                    renderables.append(query_mesh)
+                renderables += floor_plan
+                trimesh_meshes += tr_floor
+
+                show(
+                renderables,
+                behaviours=[LightToCamera(), SnapshotOnKey(), SortTriangles()],
+                size=args.window_size,
+                camera_position=args.camera_position,
+                camera_target=args.camera_target,
+                up_vector=args.up_vector,
+                background=args.background,
+                title="Re-generated Scene"
+                )
+
+        while input("Do you want to move generated objects? Type 'yes' or 'no'\n") == "yes":
             object_index = poll_moving_object(dataset, bbox_params)
             offset = poll_vector("Type the offset in the format of (x,y,z):")
             #print(bbox_params["translations"])
@@ -433,6 +500,8 @@ def main(argv):
         renderables, trimesh_meshes = get_textured_objects(
             bbox_params_t, objects_dataset, classes
         )
+        if query_mesh is not None:
+            renderables.append(query_mesh)
         renderables += floor_plan
         trimesh_meshes += tr_floor
 

@@ -25,6 +25,8 @@ def get_textured_objects(bbox_params_t, objects_dataset, classes):
             query_label, query_size
         )
 
+        #print(furniture.raw_model_path)
+        # print(furniture.scale)
         # Load the furniture and scale it as it is given in the dataset
         raw_mesh = TexturedMesh.from_file(furniture.raw_model_path)
         raw_mesh.scale(furniture.scale)
@@ -38,12 +40,14 @@ def get_textured_objects(bbox_params_t, objects_dataset, classes):
         # mesh
         translation = bbox_params_t[0, j, -7:-4]
         theta = bbox_params_t[0, j, -1]
+        #print(theta)
         R = np.zeros((3, 3))
         R[0, 0] = np.cos(theta)
         R[0, 2] = -np.sin(theta)
         R[2, 0] = np.sin(theta)
         R[2, 2] = np.cos(theta)
         R[1, 1] = 1.
+        #print(R)
 
         # Apply the transformations in order to correctly position the mesh
         raw_mesh.affine_transform(t=-centroid)
